@@ -54,6 +54,7 @@ Future versions of the model will incorporate price forecasting and rolling opti
 
 battery_trading
 │
+
 run_model.py – main script used to run the optimisation
 
 optimisation/ – battery dispatch optimisation model
