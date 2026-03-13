@@ -13,9 +13,13 @@ The model is implemented using Python and Pyomo and solves a linear optimisation
 This project is part of an ongoing effort to build practical experience in electricity market modelling and optimisation. Key areas of focus include:
 
 • Learning linear programming and optimisation techniques for energy systems
+
 • Implementing dispatch optimisation using Pyomo
+
 • Modelling battery operational constraints such as power limits, state-of-charge dynamics, and cycling limits
+
 • Exploring the interaction between energy arbitrage and ancillary service markets
+
 • Developing a structured codebase for energy trading simulations
 
 The longer-term objective is to extend the model toward a simplified trading architecture, including price forecasting, rolling optimisation, and market participation strategies.
