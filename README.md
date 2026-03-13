@@ -31,9 +31,13 @@ The optimisation model determines the battery dispatch schedule that maximises t
 The model includes:
 
 • Energy arbitrage based on wholesale electricity prices
+
 • Reserve capacity provision (frequency response / balancing services)
+
 • Battery state-of-charge dynamics
+
 • Power and energy capacity constraints
+
 • Degradation costs associated with battery throughput
 
 The optimisation problem is formulated as a linear program and solved using the HiGHS solver through Pyomo.
