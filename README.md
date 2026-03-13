@@ -68,7 +68,11 @@ data/ – price input data (future development)
 Planned extensions include:
 
 • Integration of real electricity market price data
+
 • Price forecasting models for trading decisions
+
 • Rolling horizon optimisation
+
 • Additional market services such as balancing and frequency response
+
 • Performance metrics for evaluating trading strategies
