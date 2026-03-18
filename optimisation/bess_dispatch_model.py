@@ -1,18 +1,24 @@
-from pyomo.environ import ConcreteModel
-from pyomo.environ import Set
-from pyomo.environ import Param
-from pyomo.environ import Var, NonNegativeReals
-from pyomo.environ import Constraint
-from pyomo.environ import Objective, maximize
+from pyomo.environ import ConcreteModel, Set, Param, Var, NonNegativeReals
+from pyomo.environ import Constraint, Objective, maximize, value
 from pyomo.opt import SolverFactory
-from pyomo.environ import value
 import pandas as pd
 
-def build_dispatch_model(price_series=None):
-    m = ConcreteModel()
+def build_dispatch_model(price_series, params, initial_soc):
+    
+    """
+    Linear programming optimisation of a battery participating in:
+    - energy arbitrage
+    - response up / response down reserve products
 
-    if price_series is None:
-        price_series = [30.0 if t < 48 else 80.0 for t in range(96)]
+    Constraints include:
+    - SOC dynamics
+    - power limits
+    - reserve energy feasibility
+    - throughput cap
+    - terminal SOC constraint
+    """
+    
+    m = ConcreteModel()
 
     T = range(len(price_series))
     m.T = Set(initialize=T, ordered=True)
@@ -30,37 +36,14 @@ def build_dispatch_model(price_series=None):
     m.response_up = Var(m.T, domain=NonNegativeReals)       # MW
     m.response_down = Var(m.T, domain=NonNegativeReals)     # MW
 
-
-
-    # battery constraints   - *Question 5* some of these would have to be dynamic e.g. efficiency and SoC decrease due to degredation - this is financial covered by degr_cost (could cause double counting in finacial calcs??)
-    params = dict(
-    Pmax = 50.0,            # MW
-    soc_min = 5.0,          # MWh
-    soc_max = 95.0,         # MWh
-    soc_init = 50.0,        # battery starts at 50MWh charge
-    eta_c = 0.95,           # (η) efficiency
-    eta_d = 0.95,           # (η) efficiency
-    dt = 0.25,              # hours per timestep (15 min)
-    degr_cost = 8.0,        # £ per MWh throughput (tune later)
-    cycles_per_day = 1.0,   # number of "full" cycles the battery can cycle through
-    epsilon = 1e-3,         # small £3/MWh offset
-    tau = 0.5,              # reserve duration (hours)
-    )
-
     T_last = max(m.T)
-
-
-
-    m.soc_terminal = Constraint(expr=m.soc[T_last] == params["soc_init"]) # forces the end SoC to be 50MWh (the start point)
 
     hours = len(list(m.T)) * params["dt"]
     days = hours / 24.0
     throughput_cap = 2 * (params["soc_max"] - params["soc_min"]) * params["cycles_per_day"] * days # 1 full cycle per day
-    throughput_cost = params["degr_cost"] + params["epsilon"] # *Question 6* added degradition here should pyhiscal deg be done here or at the end? if at end why not calc cost there as well ref *Question 5* 
+    throughput_cost = params["degr_cost"]  # improve later with chemistry related calcs
 
     #================================= Battery operation rules ===================================================
-
-    # *Question 7* should degredation be a function "module" here? ref *Question 5*
 
     # rules to ensure the optimiser stays within the pysical limits of the battery
     def charge_cap_rule(m, t):
@@ -87,8 +70,7 @@ def build_dispatch_model(price_series=None):
         return params["soc_max"] - m.soc[t] >= params["eta_c"] * m.response_down[t] * params["tau"]
 
     # ================================== Finanical rules =========================================================
-
-    # *Question 9* does throughput_cost give a dynamic cost? does it degredate finacnial inline with the metrics above? 
+ 
     # how much money the battery makes from discharging or costs from charging      
     def profit_rule(m): # ref *Question 2/3*
         revenue_arb = sum(m.price[t] * (m.discharge[t] - m.charge[t]) * params["dt"] for t in m.T) # revenue from arbitrage ref *Question 7*
@@ -105,15 +87,12 @@ def build_dispatch_model(price_series=None):
         penalty = penalty_arb # + penalty_res (need to track the amount of energy discharged through ancillary)
         return revenue - penalty
 
-
-    # these will probably need to be changed based on above questions. dont fully understande the 'mechanics' of the solve yet to know how these get feedback in the objective funcution 
-
-
     m.charge_cap = Constraint(m.T, rule=charge_cap_rule)
     m.discharge_cap = Constraint(m.T, rule=discharge_cap_rule)
     m.soc_bounds = Constraint(m.T, rule=soc_bounds_rule)
     m.soc_balance = Constraint(m.T, rule=soc_balance_rule)
-    m.soc_init = Constraint(expr=m.soc[0] == params["soc_init"])
+    m.soc_init = Constraint(expr=m.soc[0] == initial_soc)
+    m.soc_terminal = Constraint(expr=m.soc[T_last] == initial_soc) # temp as closed system
     m.throughput_cap = Constraint(expr=sum((m.charge[t] + m.discharge[t]) * params["dt"] for t in m.T) <= throughput_cap)
     m.up_response_energy = Constraint(m.T, rule=up_response_energy_rule)
     m.down_response_energy = Constraint(m.T, rule=down_response_energy_rule)
@@ -125,7 +104,7 @@ def build_dispatch_model(price_series=None):
 
 def solve_dispatch_model(model):
     solver = SolverFactory("highs")
-    solver.solve(model)
+    solver.solve(model, tee=False)
     return model
 
 
@@ -171,9 +150,9 @@ def extract_dispatch_results(model, params, throughput_cost):
         "summary": summary,
     }
 
-def run_dispatch_model(price_series=None):
+def run_dispatch_model(price_series, params, initial_soc):
     
-    model, params, throughput_cost = build_dispatch_model(price_series)
+    model, params, throughput_cost = build_dispatch_model(price_series=price_series,params=params,initial_soc=initial_soc,)
 
     model = solve_dispatch_model(model)
 
