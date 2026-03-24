@@ -1,57 +1,43 @@
 import matplotlib.pyplot as plt
 
-def plot_price(dispatch_df):
+def plot_rolling_results(results_df):
+
+    t = results_df["t"]
+
+    # Price
     plt.figure()
-    plt.plot(dispatch_df.index, dispatch_df["price"])
+    plt.plot(t, results_df["price"])
     plt.title("Price (£/MWh)")
     plt.xlabel("Time step")
     plt.ylabel("£/MWh")
     plt.grid(True)
 
-
-def plot_soc(dispatch_df):
+    # SOC
     plt.figure()
-    plt.plot(dispatch_df.index, dispatch_df["soc_mwh"])
+    plt.plot(t, results_df["soc_mwh_start"], label="SOC (start)")
+    plt.plot(t, results_df["soc_mwh_end"], linestyle="--", label="SOC (end)")
     plt.title("State of Charge (MWh)")
     plt.xlabel("Time step")
     plt.ylabel("MWh")
+    plt.legend()
     plt.grid(True)
 
-
-def plot_dispatch(dispatch_df):
+    # Dispatch
     plt.figure()
-    plt.plot(dispatch_df.index, dispatch_df["net_mw"])
+    net_mw = results_df["discharge_mw"] - results_df["charge_mw"]
+    plt.plot(t, net_mw)
     plt.axhline(0)
     plt.title("Battery Dispatch (MW)")
     plt.xlabel("Time step")
     plt.ylabel("MW (+ discharge, - charge)")
     plt.grid(True)
 
-
-def plot_reserve_up(dispatch_df):
+    # Profit
     plt.figure()
-    plt.plot(dispatch_df.index, dispatch_df["response_up"])
-    plt.axhline(0)
-    plt.title("Reserve UP (MW)")
+    plt.plot(t, results_df["realised_profit_gbp"].cumsum())
+    plt.title("Cumulative Profit (£)")
     plt.xlabel("Time step")
-    plt.ylabel("Reserve UP Power (MW)")
+    plt.ylabel("£")
     plt.grid(True)
 
-
-def plot_reserve_down(dispatch_df):
-    plt.figure()
-    plt.plot(dispatch_df.index, dispatch_df["response_down"])
-    plt.axhline(0)
-    plt.title("Reserve Down (MW)")
-    plt.xlabel("Time step")
-    plt.ylabel("Reserve Down Power (MW)")
-    plt.grid(True)
-
-
-def plot_all_results(dispatch_df):
-    plot_price(dispatch_df)
-    plot_soc(dispatch_df)
-    plot_dispatch(dispatch_df)
-    plot_reserve_up(dispatch_df)
-    plot_reserve_down(dispatch_df)
     plt.show()

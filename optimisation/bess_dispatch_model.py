@@ -26,8 +26,8 @@ def build_dispatch_model(price_series, params, initial_soc):
     prices = {t: price_series[t] for t in m.T}
     m.price = Param(m.T, initialize=prices)          # £/MWh    - *Question 1* how would you do this if the data being feed in is off unknowen length e.g. livedata for trading
     
-    response_up_price = {t: 5.0 for t in m.T}    # £/MW·h            - *Question 2* how would you add a tolerance range e.g. dynamic pricing, dont want the battery trading on the decline of a spike (is that legal???)
-    response_down_price = {t: 2.0 for t in m.T}  # £/MW·h            - *Question 3* how would you add a tolerance range e.g. dynamic pricing, dont want the battery trading on the decline of a spike (is that legal???)
+    response_up_price = {t: 0.0 for t in m.T}    # £/MW·h            - *Question 2* how would you add a tolerance range e.g. dynamic pricing, dont want the battery trading on the decline of a spike (is that legal???)
+    response_down_price = {t: 0.0 for t in m.T}  # £/MW·h            - *Question 3* how would you add a tolerance range e.g. dynamic pricing, dont want the battery trading on the decline of a spike (is that legal???)
     m.response_up_price = Param(m.T, initialize=response_up_price)
     m.response_down_price = Param(m.T, initialize=response_down_price)  # - *Question 4* dont know how this would interact with above // probably would have to change the strucutre for live data (below as well)
     m.charge = Var(m.T, domain=NonNegativeReals)     # MW
@@ -72,19 +72,32 @@ def build_dispatch_model(price_series, params, initial_soc):
     # ================================== Finanical rules =========================================================
  
     # how much money the battery makes from discharging or costs from charging      
-    def profit_rule(m): # ref *Question 2/3*
-        revenue_arb = sum(m.price[t] * (m.discharge[t] - m.charge[t]) * params["dt"] for t in m.T) # revenue from arbitrage ref *Question 7*
-        penalty_arb = sum(throughput_cost * (m.charge[t] + m.discharge[t]) * params["dt"] for t in m.T) # degradation cost from arbitrage ref *Question 7*
+    def profit_rule(m):
+        revenue_arb = sum(
+            m.price[t] * (m.discharge[t] - m.charge[t]) * params["dt"]
+            for t in m.T
+        )
+
+        penalty_arb = sum(
+            throughput_cost * (m.charge[t] + m.discharge[t]) * params["dt"]
+            for t in m.T
+        )
+
         revenue_response = sum(
-    (
-        m.response_up_price[t] * m.response_up[t]
-        + m.response_down_price[t] * m.response_down[t]
-    ) * params["dt"]
-    for t in m.T
-)
-        #penalty_res = sum(throughput_cost * (m.charge[t] + m.discharge[t]) * params["dt"] for t in m.T) # degradation cost from ancillary ref *Question 7*
-        revenue = revenue_arb + revenue_response
-        penalty = penalty_arb # + penalty_res (need to track the amount of energy discharged through ancillary)
+            (
+                m.response_up_price[t] * m.response_up[t]
+                + m.response_down_price[t] * m.response_down[t]
+            ) * params["dt"]
+            for t in m.T
+        )
+
+        # terminal value for usable energy left in the battery
+        terminal_price = m.price[T_last] * params["eta_d"]
+        terminal_value = terminal_price * (m.soc[T_last] - params["soc_min"])
+
+        revenue = revenue_arb + revenue_response + terminal_value
+        penalty = penalty_arb
+
         return revenue - penalty
 
     m.charge_cap = Constraint(m.T, rule=charge_cap_rule)
@@ -92,7 +105,6 @@ def build_dispatch_model(price_series, params, initial_soc):
     m.soc_bounds = Constraint(m.T, rule=soc_bounds_rule)
     m.soc_balance = Constraint(m.T, rule=soc_balance_rule)
     m.soc_init = Constraint(expr=m.soc[0] == initial_soc)
-    m.soc_terminal = Constraint(expr=m.soc[T_last] == initial_soc) # temp as closed system
     m.throughput_cap = Constraint(expr=sum((m.charge[t] + m.discharge[t]) * params["dt"] for t in m.T) <= throughput_cap)
     m.up_response_energy = Constraint(m.T, rule=up_response_energy_rule)
     m.down_response_energy = Constraint(m.T, rule=down_response_energy_rule)
