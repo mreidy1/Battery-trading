@@ -7,7 +7,13 @@ from optimisation.bess_dispatch_model import (
 )
 
 
-def run_rolling_horizon(price_series, params, initial_soc, horizon):
+def run_rolling_horizon(price_series,
+    params,
+    initial_soc,
+    horizon,
+    forecast_fn=None,
+    forecast_kwargs=None,
+):
     """
     Run a rolling-horizon battery dispatch simulation.
 
@@ -24,14 +30,24 @@ def run_rolling_horizon(price_series, params, initial_soc, horizon):
     n_steps = len(price_series)
 
     for t in range(n_steps):
-        window_prices = price_series[t : t + horizon]
-
-        # Need at least 2 steps because the SOC balance is written as soc[t+1]
-        if len(window_prices) < 2:
+        actual_window = price_series[t : t + horizon]
+        if len(actual_window) < 2:
             break
 
+        if forecast_fn is None:
+            forecast_window = actual_window
+        else:
+            if forecast_kwargs is None:
+                forecast_kwargs = {}
+            forecast_window = forecast_fn(actual_window, **forecast_kwargs)
+        
+        if t < 3:
+            print(f"\n--- t={t} ---")
+            print("actual_window[:5]   =", actual_window[:5])
+            print("forecast_window[:5] =", forecast_window[:5])
+        
         model, _, throughput_cost = build_dispatch_model(
-            price_series=window_prices,
+            price_series=forecast_window,
             params=params,
             initial_soc=current_soc,
         )
@@ -43,6 +59,7 @@ def run_rolling_horizon(price_series, params, initial_soc, horizon):
         first_step = dispatch.iloc[0]
 
         actual_price = price_series[t]
+        forecast_price = forecast_window[0]
         charge_mw = first_step["charge_mw"]
         discharge_mw = first_step["discharge_mw"]
         net_mw = discharge_mw - charge_mw
@@ -54,7 +71,6 @@ def run_rolling_horizon(price_series, params, initial_soc, horizon):
         realised_profit_gbp = energy_revenue_gbp - degradation_cost_gbp
 
         next_soc = dispatch.iloc[1]["soc_mwh"]
-        current_soc = next_soc
 
         """ print(
             f"t={t}, current_soc={current_soc:.2f}, price={actual_price:.2f}, "
@@ -66,6 +82,8 @@ def run_rolling_horizon(price_series, params, initial_soc, horizon):
                 "t": t,
                 "soc_mwh_start": current_soc,
                 "price": actual_price,
+                "forecast_price": forecast_price,
+                "forecast_error": forecast_price - actual_price,
                 "charge_mw": charge_mw,
                 "discharge_mw": discharge_mw,
                 "net_mw": net_mw,
